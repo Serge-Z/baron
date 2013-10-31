@@ -167,6 +167,12 @@ $(document).ready(function() {
         barOnCls: 'baron_h'
     });
 
+    $('.test_textarea2').baron({
+        scroller: '.scroller',
+        bar: '.scroller__bar',
+        barOnCls: 'baron'
+    });
+
     // Bar outside
     $('.test_bar-outside').baron({
         scroller: '.scroller',

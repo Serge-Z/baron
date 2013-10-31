@@ -62,6 +62,50 @@ describe("Барон.", function() {
             assert.ok(!size);
         });
     });
+
+    describe("Textarea.", function() {
+        var baron,
+            scroller;
+
+        before(function() {
+            var html = '<textarea class="scroller" style="font-size: 40px; line-height: 100px">-</textarea><div class="scroller__track"><div class="scroller__bar"></div></div></div>';
+            
+            $('.wrapper').html(html);
+
+            scroller = $('.scroller')[0];
+            $('.header__title').eq(1).css({height: '100px'});
+
+            baron = $('.wrapper').baron({
+                scroller: '.scroller',
+                bar: '.scroller__bar',
+                barOnCls: barOnCls
+            });
+
+            eachIt(baron);
+        });
+
+        it("Toggling barOnCls.", function() {
+            $('.scroller').text('sadkvbalsjdfasjdkhfakjsdhflaksdhflakjhsdafjh');
+
+            $('.scroller').each(function() {
+                $(this).trigger('scroll');
+            });
+
+            assert( $('.wrapper').hasClass(barOnCls), 'При большом количестве контента навешивается класс' );
+
+            $('.scroller').text('');
+
+            $('.scroller').each(function() {
+                $(this).trigger('scroll');
+            });
+
+            assert( !$('.wrapper').hasClass(barOnCls), 'В отсутствии текста класса нет' );
+        });
+
+        after(function() {
+            baron.dispose();
+        });
+    });
 });
 
 describe("Плагин fix.", function() {
@@ -159,6 +203,41 @@ describe("Плагин fix.", function() {
             assert(!$('.wrapper_headers .scroller .header__title').hasClass('header__title_position_bottom'), 'no after class');
 
             // $('.wrapper').html(originalHTML);
+        });
+
+        it("grad param", function() {
+            $('.wrapper').html(originalHTML);
+
+            baron = $('.scroller').baron({
+                bar: '.scroller__bar',
+                barOnCls: barOnCls
+            }).fix({
+                elements: '.header__title',
+                outside: 'header__title_state_fixed',
+                before: 'header__title_position_top',
+                after: 'header__title_position_bottom',
+                past: 'header__title_group_top',
+                future: 'header__title_group_bottom',
+                grad: 'header__title_grad_true',
+                radius: 100
+            });
+
+            baron.update(); // Событие выстреливает позже
+
+            assert(!$('.wrapper_headers .scroller .header:first-of-type .header__title').hasClass('header__title_grad_true'), 'has no grad class on start');
+
+            $('.scroller')[0].scrollTop = 1;
+            baron.update();
+            assert($('.wrapper_headers .scroller .header:first-of-type .header__title').hasClass('header__title_grad_true'), 'has grad class after 1px scroll down');
+
+            $('.scroller')[0].scrollTop = $('.scroller')[0].scrollHeight - $('.scroller')[0].clientHeight;
+            baron.update();
+            assert(!$('.wrapper_headers .scroller .header:last-of-type .header__title').hasClass('header__title_grad_true'), 'has no grad class on end');
+            $('.scroller')[0].scrollTop = $('.scroller')[0].scrollHeight - $('.scroller')[0].clientHeight - 1;
+            baron.update();
+            assert($('.wrapper_headers .scroller .header:last-of-type .header__title').hasClass('header__title_grad_true'), 'has grad class after 1px scroll up');
+
+            baron.dispose();
         });
     });
 
@@ -310,9 +389,116 @@ describe("Плагин fix.", function() {
             assert($('.header__title')[0].offsetTop == -7, 'offsetTop at 1px scroll ' + $('.header__title')[0].offsetTop);
         });
 
-        // after(function() {
-        //     baron.dispose();
+        after(function() {
+            baron.dispose();
+        });
+    });
+
+    describe("Live params update.", function() {
+        var baron,
+            scroller;
+
+        before(function() {
+            var html = '<div class="scroller"><div class="container"><div class="header"><h1 class="header__title">Baron</h1></div><p class="text">is the third most populous city in Russia after Moscow and St. Petersburg and the most populous city in Asian Russia, with a population of 1,473,754 (2010 Census). It is the administrative center of Novosibirsk Oblast as well as of Siberian Federal District. The city is located in the southwestern part of Siberia at the banks of the Ob River and occupies an area of 502.1 square kilometers (193.9 sq mi).</p><div class="header"><h1 class="header__title">Baron</h1></div><div class="scroller__pull"></div></div><div class="scroller__bar"></div></div>';
+            
+            $('.wrapper').html(html);
+
+            scroller = $('.scroller')[0];
+
+            baron = $('.scroller').baron({
+                bar: '.scroller__bar',
+                barOnCls: barOnCls
+            }).fix({
+                elements: '.header__title',
+                outside: 'header__title_state_fixed',
+                before: 'header__title_position_top',
+                after: 'header__title_position_bottom'
+            });
+
+            eachIt(baron);
+        });
+
+        it("Add limiter param", function() {
+            baron.update({
+                fix: {
+                    limiter: true
+                }
+            });
+            scroller.scrollTop = 1;
+            scroller.scrollTop = 0;
+
+            assert(parseInt($('.scroller__bar').css('top'), 10) == $('.header').height(), 'Самое высокое положение скроллбара теперь ограничено высотой заголовка');
+
+            baron.update({
+                fix: {
+                    limiter: false
+                }
+            });
+            scroller.scrollTop = 1;
+            scroller.scrollTop = 0;
+            
+            assert(parseInt($('.scroller__bar').css('top'), 10) == 0, 'Самое высокое положение скроллбара снова неограничено высотой заголовка');
+        });
+
+        // it("offsetTop", function() {
+        //     assert($('.header__title')[0].offsetTop == -7, 'offsetTop at start pos ' + $('.header__title')[0].offsetTop);
+        //     $('.scroller')[0].scrollTop = 1;
+        //     baron.update();
+        //     assert($('.header__title')[0].offsetTop == -7, 'offsetTop at 1px scroll ' + $('.header__title')[0].offsetTop);
         // });
+
+        after(function() {
+            baron.dispose();
+        });
+    });
+
+    describe("Two independed fix.", function() {
+        var baron,
+            scroller;
+
+        before(function() {
+            var html = '<div class="scroller"><div class="container"><div class="header"><h1 class="header__title">Baron</h1></div><p class="text">is the third most populous city in Russia after Moscow and St. Petersburg and the most populous city in Asian Russia, with a population of 1,473,754 (2010 Census). It is the administrative center of Novosibirsk Oblast as well as of Siberian Federal District. The city is located in the southwestern part of Siberia at the banks of the Ob River and occupies an area of 502.1 square kilometers (193.9 sq mi).</p><div class="header"><h1 class="header__title">Baron</h1></div><div class="scroller__pull"></div></div><div class="scroller__bar"></div></div>';
+            
+            $('.wrapper').html(html);
+
+            scroller = $('.scroller')[0];
+            $('.header__title').eq(1).css({height: '100px'});
+
+            baron = $('.scroller').baron({
+                bar: '.scroller__bar',
+                barOnCls: barOnCls
+            }).fix({
+                elements: $('.header__title').eq(0),
+                outside: 'header__title_state_fixed',
+                before: 'header__title_position_top',
+                after: 'header__title_position_bottom',
+                limiter: true
+            }).fix({
+                elements: $('.header__title').eq(1),
+                outside: 'header__title_state_fixed',
+                before: 'header__title_position_top',
+                after: 'header__title_position_bottom'
+            });
+
+            eachIt(baron);
+        });
+
+        it("Bar limited by first header", function() {
+            baron.update();
+            assert(parseInt($('.scroller__bar').css('top'), 10) == $('.header').height(), 'Самое высокое положение скроллбара ограничено высотой первого заголовка');
+        });
+
+        // it("offsetTop", function() {
+        //     assert($('.header__title')[0].offsetTop == -7, 'offsetTop at start pos ' + $('.header__title')[0].offsetTop);
+        //     $('.scroller')[0].scrollTop = 1;
+        //     baron.update();
+        //     assert($('.header__title')[0].offsetTop == -7, 'offsetTop at 1px scroll ' + $('.header__title')[0].offsetTop);
+        // });
+
+        after(function() {
+            baron.dispose();
+            $('.header__title').eq(1).css({height: ''});
+        });
     });
 });
 

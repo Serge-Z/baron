@@ -8,13 +8,13 @@ var
     $ = window.jQuery, // Trying to use jQuery
     origin = {
         v: { // Vertical
-            x: 'Y', pos: 'top', crossPos: 'left', size: 'height', crossSize: 'width',
-            client: 'clientHeight', crossClient: 'clientWidth', offset: 'offsetHeight', crossOffset: 'offsetWidth', offsetPos: 'offsetTop',
+            x: 'Y', pos: 'top', oppos: 'bottom', crossPos: 'left', size: 'height', crossSize: 'width',
+            client: 'clientHeight', crossClient: 'clientWidth', crossScroll: 'scrollWidth', offset: 'offsetHeight', crossOffset: 'offsetWidth', offsetPos: 'offsetTop',
             scroll: 'scrollTop', scrollSize: 'scrollHeight'
         },
         h: { // Horizontal
-            x: 'X', pos: 'left', crossPos: 'top', size: 'width', crossSize: 'height',
-            client: 'clientWidth', crossClient: 'clientHeight', offset: 'offsetWidth', crossOffset: 'offsetHeight', offsetPos: 'offsetLeft',
+            x: 'X', pos: 'left', oppos: 'right', crossPos: 'top', size: 'width', crossSize: 'height',
+            client: 'clientWidth', crossClient: 'clientHeight', crossScroll: 'scrollHeight', offset: 'offsetWidth', crossOffset: 'offsetHeight', offsetPos: 'offsetLeft',
             scroll: 'scrollLeft', scrollSize: 'scrollWidth'
         }
     },
@@ -83,7 +83,11 @@ var
 
         update: function() {
             var i = 0;
-            while (this[i]) this[i++].update();
+
+            while (this[i]) {
+                this[i].update.apply(this[i], arguments);
+                i++;
+            }
         },
 
         baron: function(params) {
@@ -258,7 +262,9 @@ var
         /* jshint validthis:true */
         if (this.events && this.events[eventName]) {
             for (var i = 0 ; i < this.events[eventName].length ; i++) {
-                this.events[eventName][i].apply(this, Array.prototype.slice.call( arguments, 1 ));
+                var args = Array.prototype.slice.call( arguments, 1 );
+
+                this.events[eventName][i].apply(this, args);
             }
         }
     }
@@ -408,7 +414,16 @@ var
                 }
 
                 function upd() {
-                    var delta = self.scroller[self.origin.crossOffset] - self.scroller[self.origin.crossClient];
+                    var delta,
+                        client;
+
+                    if (self.scroller.tagName == 'TEXTAREA') {
+                        client = self.scroller[self.origin.crossScroll];
+                    } else {
+                        client = self.scroller[self.origin.crossClient];
+                    }
+
+                    delta = self.scroller[self.origin.crossOffset] - client;
 
                     if (params.freeze && !self.clipper.style[self.origin.crossSize]) { // Sould fire only once
                         $(self.clipper).css(self.origin.crossSize, self.clipper[self.origin.crossClient] - delta + 'px');
@@ -429,7 +444,7 @@ var
             };
 
             // onScroll handler
-            this.scroll = function( ) {
+            this.scroll = function() {
                 var oldBarSize, newBarSize,
                     delay = 0,
                     self = this;
@@ -438,6 +453,8 @@ var
                     clearTimeout(scrollPauseTimer);
                     delay = pause;
                 }
+
+                this.barOn();
 
                 function upd() {
                     if (self.bar) {
@@ -471,9 +488,10 @@ var
             return this;
         },
 
-        update: function() {
+        update: function(params) {
+            fire.call(this, 'upd', params); // Обновляем параметры всех плагинов
+
             this.resize(1);
-            this.barOn();
             this.scroll();
 
             return this;
@@ -496,8 +514,8 @@ var
                 } else {
                     this.events[names[i]] = this.events[names[i]] || [];
 
-                    this.events[names[i]].push(function() {
-                        func.call(this, arg);
+                    this.events[names[i]].push(function(userArg) {
+                        func.call(this, userArg || arg);
                     });
                 }
             }
@@ -514,7 +532,7 @@ var
         return baron;
     };
 
-    baron.version = '0.6.5';
+    baron.version = '0.6.9';
 
     if ($ && $.fn) { // Adding baron to jQuery as plugin
         $.fn.baron = baron;
@@ -526,26 +544,41 @@ var
 })(window);
 /* Fixable elements plugin for baron 0.6+ */
 (function(window, undefined) {
-    var fix = function(params) {
-        var elements, outside, before, after, past, future, elementSelector, radius, viewPortSize, minView, limiter,
+    var fix = function(userParams) {
+        var elements, viewPortSize,
+            params = { // Default params
+                outside: '',
+                before: '',
+                after: '',
+                past: '',
+                future: '',
+                radius: 0,
+                minView: 0
+            },
             topFixHeights = [], // inline style for element
-            topRealHeights = [], // real offset position when not fixed
-            headerTops = [],
+            topRealHeights = [], // ? something related to negative margins for fixable elements
+            headerTops = [], // offset positions when not fixed
             scroller = this.scroller,
             eventManager = this.event,
             $ = this.$,
             self = this;
 
-        function fixElement(i, pos) {
-            if (viewPortSize < (minView || 0)) { // No headers fixing when no enought space for viewport
+        // i - number of fixing element, pos - fix-position in px, flag - 1: top, 2: bottom
+        // Invocation only in case when fix-state changed
+        function fixElement(i, pos, flag) {
+            var ori = flag == 1 ? 'pos' : 'oppos';
+
+            if (viewPortSize < (params.minView || 0)) { // No headers fixing when no enought space for viewport
                 pos = undefined;
             }
 
+            // Removing all fixing stuff - we can do this because fixElement triggers only when fixState really changed
+            this.$(elements[i]).css(this.origin.pos, '').css(this.origin.oppos, '').removeClass(params.outside);
+
+            // Fixing if needed
             if (pos !== undefined) {
                 pos += 'px';
-                this.$(elements[i]).css(this.origin.pos, pos).addClass(outside);
-            } else {
-                this.$(elements[i]).css(this.origin.pos, '').removeClass(outside);
+                this.$(elements[i]).css(this.origin[ori], pos).addClass(params.outside);
             }
         }
 
@@ -562,19 +595,11 @@ var
         function init(_params) {
             var pos;
 
-            if (_params) {
-                elementSelector = _params.elements;
-                outside = _params.outside + '';
-                before = _params.before + '';
-                after = _params.after + '';
-                past = _params.past + '';
-                future = _params.future + '';
-                radius = _params.radius || 0;
-                minView = _params.minView || 0;
-                limiter = _params.limiter;
+            for (var key in _params) {
+                params[key] = _params[key];
             }
 
-            elements = this.$(elementSelector, this.scroller);
+            elements = this.$(params.elements, this.scroller);
 
             if (elements) {
                 viewPortSize = this.scroller[this.origin.client];
@@ -609,7 +634,7 @@ var
                     }
                 }
 
-                if (limiter && elements[0]) { // Bottom edge of first header as top limit for track
+                if (params.limiter && elements[0]) { // Bottom edge of first header as top limit for track
                     if (this.track && this.track != this.scroller) {
                         pos = {};
                         pos[this.origin.pos] = elements[0].parentNode[this.origin.offset];
@@ -619,6 +644,10 @@ var
                     }
                     // this.barTopLimit = elements[0].parentNode[this.origin.offset];
                     this.scroll();
+                }
+
+                if (params.limiter === false) { // undefined (in second fix instance) should have no influence on bar limit
+                    this.barTopLimit = 0;
                 }
             }
 
@@ -657,11 +686,12 @@ var
             }
         }
 
-        this.on('init', init, params);
+        this.on('init', init, userParams);
 
         this.on('init scroll', function() {
-            var fixState, hTop,
-                fixFlag = []; // 1 - past, 2 - future, 3 - current (not fixed)
+            var fixState, hTop, gradState,
+                fixFlag = [], // 1 - past, 2 - future, 3 - current (not fixed)
+                gradFlag = [];
 
             if (elements) {
                 var change;
@@ -669,22 +699,32 @@ var
                 // fixFlag update
                 for (var i = 0 ; i < elements.length ; i++) {
                     fixState = 0;
-                    if (headerTops[i] - this.pos() < topRealHeights[i] + radius) {
+                    if (headerTops[i] - this.pos() < topRealHeights[i] + params.radius) {
                         // Header trying to go up
                         fixState = 1;
                         hTop = topFixHeights[i];
-                    } else if (headerTops[i] - this.pos() > topRealHeights[i] + viewPortSize - radius) {
+                    } else if (headerTops[i] - this.pos() > topRealHeights[i] + viewPortSize - params.radius) {
                         // Header trying to go down
                         fixState = 2;
-                        hTop = topFixHeights[i] + viewPortSize;
+                        // console.log('topFixHeights[i] + viewPortSize + topRealHeights[i]', topFixHeights[i], this.scroller[this.origin.client], topRealHeights[i]);
+                        hTop = this.scroller[this.origin.client] - elements[i][this.origin.offset] - topFixHeights[i] - viewPortSize;
+                        // console.log('hTop', hTop, viewPortSize, elements[this.origin.offset], topFixHeights[i]);
+                        //(topFixHeights[i] + viewPortSize + elements[this.origin.offset]) - this.scroller[this.origin.client];
                     } else {
                         // Header in viewport
                         fixState = 3;
                         hTop = undefined;
                     }
-                    if (fixState != fixFlag[i]) {
-                        fixElement.call(this, i, hTop);
+
+                    gradState = false;
+                    if (headerTops[i] - this.pos() < topRealHeights[i] || headerTops[i] - this.pos() > topRealHeights[i] + viewPortSize) {
+                        gradState = true;
+                    }
+
+                    if (fixState != fixFlag[i] || gradState != gradFlag[i]) {
+                        fixElement.call(this, i, hTop, fixState);
                         fixFlag[i] = fixState;
+                        gradFlag[i] = gradState;
                         change = true;
                     }
                 }
@@ -692,32 +732,40 @@ var
                 // Adding positioning classes (on last top and first bottom header)
                 if (change) { // At leats one change in elements flag structure occured
                     for (i = 0 ; i < elements.length ; i++) {
-                        if (fixFlag[i] == 1 && past) {
-                            this.$(elements[i]).addClass(past).removeClass(future);
+                        if (fixFlag[i] == 1 && params.past) {
+                            this.$(elements[i]).addClass(params.past).removeClass(params.future);
                         }
 
-                        if (fixFlag[i] == 2 && future) {
-                            this.$(elements[i]).addClass(future).removeClass(past);
+                        if (fixFlag[i] == 2 && params.future) {
+                            this.$(elements[i]).addClass(params.future).removeClass(params.past);
                         }
 
-                        if (fixFlag[i] == 3 && (future || past)) {
-                            this.$(elements[i]).removeClass(past).removeClass(future);
+                        if (fixFlag[i] == 3 && (params.future || params.past)) {
+                            this.$(elements[i]).removeClass(params.past).removeClass(params.future);
                         }
 
-                        if (fixFlag[i] != fixFlag[i + 1] && fixFlag[i] == 1 && before) {
-                            this.$(elements[i]).addClass(before).removeClass(after); // Last top fixed header
-                        } else if (fixFlag[i] != fixFlag[i - 1] && fixFlag[i] == 2 && after) {
-                            this.$(elements[i]).addClass(after).removeClass(before); // First bottom fixed header
+                        if (fixFlag[i] != fixFlag[i + 1] && fixFlag[i] == 1 && params.before) {
+                            this.$(elements[i]).addClass(params.before).removeClass(params.after); // Last top fixed header
+                        } else if (fixFlag[i] != fixFlag[i - 1] && fixFlag[i] == 2 && params.after) {
+                            this.$(elements[i]).addClass(params.after).removeClass(params.before); // First bottom fixed header
                         } else {
-                            this.$(elements[i]).removeClass(before).removeClass(after);
+                            this.$(elements[i]).removeClass(params.before).removeClass(params.after);
+                        }
+
+                        if (params.grad) {
+                            if (gradFlag[i]) {
+                                this.$(elements[i]).addClass(params.grad);
+                            } else {
+                                this.$(elements[i]).removeClass(params.grad);
+                            }
                         }
                     }
                 }
             }
         });
 
-        this.on('resize', function() {
-            init.call(this);
+        this.on('resize upd', function(updParams) {
+            init.call(this, updParams && updParams.fix);
         });
     };
 

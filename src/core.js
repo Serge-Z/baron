@@ -8,13 +8,13 @@ var
     $ = window.jQuery, // Trying to use jQuery
     origin = {
         v: { // Vertical
-            x: 'Y', pos: 'top', crossPos: 'left', size: 'height', crossSize: 'width',
-            client: 'clientHeight', crossClient: 'clientWidth', offset: 'offsetHeight', crossOffset: 'offsetWidth', offsetPos: 'offsetTop',
+            x: 'Y', pos: 'top', oppos: 'bottom', crossPos: 'left', size: 'height', crossSize: 'width',
+            client: 'clientHeight', crossClient: 'clientWidth', crossScroll: 'scrollWidth', offset: 'offsetHeight', crossOffset: 'offsetWidth', offsetPos: 'offsetTop',
             scroll: 'scrollTop', scrollSize: 'scrollHeight'
         },
         h: { // Horizontal
-            x: 'X', pos: 'left', crossPos: 'top', size: 'width', crossSize: 'height',
-            client: 'clientWidth', crossClient: 'clientHeight', offset: 'offsetWidth', crossOffset: 'offsetHeight', offsetPos: 'offsetLeft',
+            x: 'X', pos: 'left', oppos: 'right', crossPos: 'top', size: 'width', crossSize: 'height',
+            client: 'clientWidth', crossClient: 'clientHeight', crossScroll: 'scrollHeight', offset: 'offsetWidth', crossOffset: 'offsetHeight', offsetPos: 'offsetLeft',
             scroll: 'scrollLeft', scrollSize: 'scrollWidth'
         }
     },
@@ -83,7 +83,11 @@ var
 
         update: function() {
             var i = 0;
-            while (this[i]) this[i++].update();
+
+            while (this[i]) {
+                this[i].update.apply(this[i], arguments);
+                i++;
+            }
         },
 
         baron: function(params) {
@@ -258,7 +262,9 @@ var
         /* jshint validthis:true */
         if (this.events && this.events[eventName]) {
             for (var i = 0 ; i < this.events[eventName].length ; i++) {
-                this.events[eventName][i].apply(this, Array.prototype.slice.call( arguments, 1 ));
+                var args = Array.prototype.slice.call( arguments, 1 );
+
+                this.events[eventName][i].apply(this, args);
             }
         }
     }
@@ -408,7 +414,16 @@ var
                 }
 
                 function upd() {
-                    var delta = self.scroller[self.origin.crossOffset] - self.scroller[self.origin.crossClient];
+                    var delta,
+                        client;
+
+                    if (self.scroller.tagName == 'TEXTAREA') {
+                        client = self.scroller[self.origin.crossScroll];
+                    } else {
+                        client = self.scroller[self.origin.crossClient];
+                    }
+
+                    delta = self.scroller[self.origin.crossOffset] - client;
 
                     if (params.freeze && !self.clipper.style[self.origin.crossSize]) { // Sould fire only once
                         $(self.clipper).css(self.origin.crossSize, self.clipper[self.origin.crossClient] - delta + 'px');
@@ -429,7 +444,7 @@ var
             };
 
             // onScroll handler
-            this.scroll = function( ) {
+            this.scroll = function() {
                 var oldBarSize, newBarSize,
                     delay = 0,
                     self = this;
@@ -438,6 +453,8 @@ var
                     clearTimeout(scrollPauseTimer);
                     delay = pause;
                 }
+
+                this.barOn();
 
                 function upd() {
                     if (self.bar) {
@@ -471,9 +488,10 @@ var
             return this;
         },
 
-        update: function() {
+        update: function(params) {
+            fire.call(this, 'upd', params); // Обновляем параметры всех плагинов
+
             this.resize(1);
-            this.barOn();
             this.scroll();
 
             return this;
@@ -496,8 +514,8 @@ var
                 } else {
                     this.events[names[i]] = this.events[names[i]] || [];
 
-                    this.events[names[i]].push(function() {
-                        func.call(this, arg);
+                    this.events[names[i]].push(function(userArg) {
+                        func.call(this, userArg || arg);
                     });
                 }
             }
@@ -514,7 +532,7 @@ var
         return baron;
     };
 
-    baron.version = '0.6.5';
+    baron.version = '0.6.9';
 
     if ($ && $.fn) { // Adding baron to jQuery as plugin
         $.fn.baron = baron;
